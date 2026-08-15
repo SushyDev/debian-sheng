@@ -932,333 +932,327 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
-      # ================================================================
-      # ROOTFS GENERATION DISABLED - Only boot.img will be built
-      # ================================================================
-      # To re-enable rootfs generation, uncomment the sections below
-      # ================================================================
+      # ----------------------------------------------------------------
+      # Create Image
+      # ----------------------------------------------------------------
 
-      # # ----------------------------------------------------------------
-      # # Create Image
-      # # ----------------------------------------------------------------
-      #
-      # - name: "Create RootFS Image"
-      #   run: |
-      #     truncate -s "$IMAGE_SIZE" rootfs.img
-      #     mkfs.ext4 rootfs.img
-      #     echo "✓ RootFS image created (${IMAGE_SIZE})"
-      #
-      # - name: "Mount RootFS Image"
-      #   run: |
-      #     sudo mkdir -p "$ROOTFS_MOUNT"
-      #     sudo mount -o loop rootfs.img "$ROOTFS_MOUNT"
-      #     echo "✓ RootFS image mounted at $ROOTFS_MOUNT"
-      #
-      # # ----------------------------------------------------------------
-      # # Debootstrap
-      # # ----------------------------------------------------------------
-      #
-      # - name: "Run Debootstrap (${{ inputs.distro_suite }})"
-      #   run: |
-      #     sudo debootstrap \
-      #       --arch=arm64 \
-      #       --components=main,contrib,non-free-firmware \
-      #       "${{ inputs.distro_suite }}" \
-      #       "$ROOTFS_MOUNT" \
-      #       http://deb.debian.org/debian/
-      #     echo "✓ Debootstrap complete"
-      #
-      # - name: "Mount Virtual File Systems"
-      #   run: |
-      #     sudo mount --bind /dev "$ROOTFS_MOUNT/dev"
-      #     sudo mount --bind /dev/pts "$ROOTFS_MOUNT/dev/pts"
-      #     sudo mount -t proc proc "$ROOTFS_MOUNT/proc"
-      #     sudo mount -t sysfs sys "$ROOTFS_MOUNT/sys"
-      #     sudo cp /etc/resolv.conf "$ROOTFS_MOUNT/etc/resolv.conf"
-      #     echo "✓ Virtual file systems mounted"
-      #
-      # # ----------------------------------------------------------------
-      # # Install Packages
-      # # ----------------------------------------------------------------
-      #
-      # - name: "Install Base Packages"
-      #   run: |
-      #     sudo chroot "$ROOTFS_MOUNT" apt-get update
-      #     sudo chroot "$ROOTFS_MOUNT" apt-get install -y \
-      #       systemd systemd-sysv \
-      #       sudo vim wget curl \
-      #       network-manager openssh-server \
-      #       wpasupplicant dbus \
-      #       ca-certificates \
-      #       chrony \
-      #       iw \
-      #       lm-sensors \
-      #       wireless-regdb \
-      #       net-tools \
-      #       libglib2.0-0 \
-      #       libprotobuf-c1 \
-      #       libqmi-glib5 \
-      #       libmbim-glib4 \
-      #       libyaml-0-2 \
-      #       libgudev-1.0-0 \
-      #       libpolkit-gobject-1-0
-      #     echo "✓ Base packages installed"
-      #
-      # - name: "Use Upstream Regulatory Database"
-      #   run: |
-      #     sudo chroot "$ROOTFS_MOUNT" update-alternatives --set regulatory.db /lib/firmware/regulatory.db-upstream
-      #     echo "✓ Upstream regulatory database selected"
-      #
-      # - name: "Install Plymouth"
-      #   if: ${{ steps.partition.outputs.quiet_boot_enabled == 'true' }}
-      #   run: |
-      #     sudo chroot "$ROOTFS_MOUNT" apt-get update
-      #     sudo chroot "$ROOTFS_MOUNT" apt-get install -y \
-      #       plymouth plymouth-themes
-      #     echo "✓ Plymouth installed"
-      #
-      # - name: "Install All .deb Packages"
-      #   run: |
-      #     sudo cp ./*.deb "$ROOTFS_MOUNT/tmp/"
-      #
-      #     echo "  Packages to install:"
-      #     sudo ls -lah "$ROOTFS_MOUNT/tmp/"*.deb
-      #
-      #     sudo chroot "$ROOTFS_MOUNT" bash -c "
-      #       apt-get update
-      #       apt-get install -y /tmp/*.deb 2>&1 || apt-get install -f -y
-      #       rm /tmp/*.deb
-      #     "
-      #     echo "✓ All .deb packages installed"
-      #
-      # # ----------------------------------------------------------------
-      # # System Tuning
-      # # ----------------------------------------------------------------
-      #
-      # - name: "Fix Permissions"
-      #   run: |
-      #     if [ -f "$ROOTFS_MOUNT/usr/bin/adsprpcd" ]; then
-      #       sudo chmod +x "$ROOTFS_MOUNT/usr/bin/adsprpcd"
-      #       echo "✓ adsprpcd permissions fixed"
-      #     else
-      #       echo "  /usr/bin/adsprpcd not found, skipped"
-      #     fi
-      #
-      #     if [ -f "$ROOTFS_MOUNT/usr/libexec/iio-sensor-proxy" ]; then
-      #       sudo chmod +x "$ROOTFS_MOUNT/usr/libexec/iio-sensor-proxy"
-      #       echo "✓ iio-sensor-proxy permissions fixed"
-      #     else
-      #       echo "  /usr/libexec/iio-sensor-proxy not found, skipped"
-      #     fi
-      #
-      #     if [ -f "$ROOTFS_MOUNT/usr/bin/monitor-sensor" ]; then
-      #       sudo chmod +x "$ROOTFS_MOUNT/usr/bin/monitor-sensor"
-      #       echo "✓ monitor-sensor permissions fixed"
-      #     else
-      #       echo "  /usr/bin/monitor-sensor not found, skipped"
-      #     fi
-      #
-      #     if [ -f "$ROOTFS_MOUNT/usr/bin/ssccli" ]; then
-      #       sudo chmod +x "$ROOTFS_MOUNT/usr/bin/ssccli"
-      #       echo "✓ ssccli permissions fixed"
-      #     else
-      #       echo "  /usr/bin/ssccli not found, skipped"
-      #     fi
-      #
-      # - name: "Enable Sensor Services"
-      #   run: |
-      #     sudo chroot "$ROOTFS_MOUNT" systemctl enable adsprpcd-sensorspd.service
-      #     echo "✓ Sensor services enabled"
-      #
-      # - name: "Add resizefs Service (First-Boot Auto-Expand)"
-      #   run: |
-      #     sudo tee "$ROOTFS_MOUNT/etc/systemd/system/resizefs.service" << 'EOF'
-      #     [Unit]
-      #     Description=Expand root filesystem to fill partition and self-destruct
-      #     After=local-fs.target
-      #
-      #     [Service]
-      #     Type=oneshot
-      #     ExecStart=/usr/bin/bash -c 'exec /usr/sbin/resize2fs $(findmnt -nvo SOURCE /)'
-      #     ExecStartPost=/usr/bin/systemctl disable resizefs.service
-      #     ExecStartPost=/usr/bin/rm -f /etc/systemd/system/resizefs.service
-      #     ExecStartPost=/usr/bin/systemctl daemon-reload
-      #     RemainAfterExit=true
-      #
-      #     [Install]
-      #     WantedBy=default.target
-      #     EOF
-      #     sudo chroot "$ROOTFS_MOUNT" systemctl enable resizefs.service
-      #     echo "✓ resizefs service added and enabled"
-      #
-      # - name: "Set Hostname"
-      #   run: |
-      #     echo "${{ inputs.hostname }}" | sudo tee "$ROOTFS_MOUNT/etc/hostname"
-      #     if ! grep -q "127.0.1.1.*${{ inputs.hostname }}" "$ROOTFS_MOUNT/etc/hosts"; then
-      #       echo "127.0.1.1 ${{ inputs.hostname }}" | sudo tee -a "$ROOTFS_MOUNT/etc/hosts"
-      #     fi
-      #     echo "✓ Hostname set to ${{ inputs.hostname }}"
-      #
-      # - name: "Configure Locale"
-      #   run: |
-      #     LANG_CHOICE="${{ inputs.language }}"
-      #
-      #     if [ "$LANG_CHOICE" = 'None (C.UTF-8)' ]; then
-      #       echo "✓ System locale stays C.UTF-8"
-      #     else
-      #       # locales package provides locale-gen and /etc/locale.gen
-      #       sudo chroot "$ROOTFS_MOUNT" apt-get update
-      #       sudo chroot "$ROOTFS_MOUNT" apt-get install -y locales
-      #       # Generate selected language + en_US.UTF-8
-      #       sudo sed -i 's/^# *\(en_US\.UTF-8\)/\1/' "$ROOTFS_MOUNT/etc/locale.gen"
-      #       sudo sed -i "s/^# *\\(${LANG_CHOICE//./\\.}\\)/\\1/" "$ROOTFS_MOUNT/etc/locale.gen"
-      #       sudo chroot "$ROOTFS_MOUNT" locale-gen
-      #       echo "LANG=$LANG_CHOICE" | sudo tee "$ROOTFS_MOUNT/etc/default/locale"
-      #       echo "✓ Locale set to $LANG_CHOICE (+ en_US.UTF-8)"
-      #     fi
-      #
-      # - name: "Create User"
-      #   run: |
-      #     sudo chroot "$ROOTFS_MOUNT" useradd \
-      #       -m -s /bin/bash \
-      #       -G sudo \
-      #       "${{ inputs.username }}"
-      #     echo "✓ User ${{ inputs.username }} created"
-      #
-      # - name: "Set Passwords"
-      #   env:
-      #     ROOTFS_PASSWORD: ${{ secrets.ROOTFS_PASSWORD }}
-      #   run: |
-      #     if [[ -z "$ROOTFS_PASSWORD" ]]; then
-      #       ROOTFS_PASSWORD="password"
-      #     else
-      #       echo "::add-mask::$ROOTFS_PASSWORD"
-      #     fi
-      #     printf '%s:%s\n' "${{ inputs.username }}" "$ROOTFS_PASSWORD" | \
-      #       sudo chroot "$ROOTFS_MOUNT" chpasswd
-      #     printf 'root:%s\n' "$ROOTFS_PASSWORD" | \
-      #       sudo chroot "$ROOTFS_MOUNT" chpasswd
-      #     echo "✓ Passwords set"
-      #
-      # # ----------------------------------------------------------------
-      # # Desktop Environment
-      # # ----------------------------------------------------------------
-      #
-      # - name: "Install GNOME"
-      #   if: ${{ inputs.desktop == 'GNOME' }}
-      #   run: |
-      #     sudo chroot "$ROOTFS_MOUNT" apt-get update
-      #     sudo chroot "$ROOTFS_MOUNT" apt-get install -y \
-      #       gnome-shell gnome-session gnome-terminal \
-      #       gdm3 firefox-esr \
-      #       gnome-control-center
-      #     echo "✓ GNOME installed"
-      #
-      # - name: "Install KDE Plasma"
-      #   if: ${{ inputs.desktop == 'KDE Plasma' }}
-      #   run: |
-      #     sudo chroot "$ROOTFS_MOUNT" apt-get update
-      #     if [[ "${{ inputs.plasma_mobile }}" == "true" ]]; then
-      #       PLASMA_PACKAGE="plasma-mobile"
-      #     else
-      #       PLASMA_PACKAGE="plasma-desktop"
-      #     fi
-      #     sudo chroot "$ROOTFS_MOUNT" apt-get install -y \
-      #       "$PLASMA_PACKAGE" plasma-workspace plasma-nm \
-      #       sddm konsole firefox-esr \
-      #       dolphin kate \
-      #       pipewire-alsa
-      #     echo "✓ KDE Plasma installed"
-      #
-      # - name: "Install KDE Plasma Plymouth Settings"
-      #   if: ${{ inputs.desktop == 'KDE Plasma' && steps.partition.outputs.quiet_boot_enabled == 'true' }}
-      #   run: |
-      #     sudo chroot "$ROOTFS_MOUNT" apt-get update
-      #     sudo chroot "$ROOTFS_MOUNT" apt-get install -y \
-      #       kde-config-plymouth plymouth-theme-breeze
-      #     echo "✓ KDE Plasma Plymouth settings installed"
-      #
-      # - name: "Configure GDM"
-      #   if: ${{ inputs.desktop == 'GNOME' && (!inputs.autologin) }}
-      #   run: |
-      #     sudo chroot "$ROOTFS_MOUNT" systemctl enable gdm3
-      #     sudo chroot "$ROOTFS_MOUNT" systemctl set-default graphical.target
-      #     echo "✓ GDM enabled (manual login)"
-      #
-      # - name: "Configure SDDM"
-      #   if: ${{ inputs.desktop == 'KDE Plasma' && (!inputs.autologin) }}
-      #   run: |
-      #     sudo chroot "$ROOTFS_MOUNT" systemctl enable sddm
-      #     sudo chroot "$ROOTFS_MOUNT" systemctl set-default graphical.target
-      #     echo "✓ SDDM enabled (manual login)"
-      #
-      # - name: "Configure GDM with Autologin"
-      #   if: ${{ inputs.desktop == 'GNOME' && inputs.autologin }}
-      #   run: |
-      #     sudo mkdir -p "$ROOTFS_MOUNT/etc/gdm3"
-      #     sudo tee "$ROOTFS_MOUNT/etc/gdm3/daemon.conf" << EOF
-      #     [daemon]
-      #     AutomaticLoginEnable=true
-      #     AutomaticLogin=${{ inputs.username }}
-      #     EOF
-      #     sudo chroot "$ROOTFS_MOUNT" systemctl enable gdm3
-      #     sudo chroot "$ROOTFS_MOUNT" systemctl set-default graphical.target
-      #     echo "✓ GDM autologin configured for ${{ inputs.username }}"
-      #
-      # - name: "Configure SDDM with Autologin"
-      #   if: ${{ inputs.desktop == 'KDE Plasma' && inputs.autologin }}
-      #   run: |
-      #     if [[ "${{ inputs.plasma_mobile }}" == "true" ]]; then
-      #       SDDM_SESSION="plasma-mobile"
-      #     else
-      #       SDDM_SESSION="plasma"
-      #     fi
-      #     sudo mkdir -p "$ROOTFS_MOUNT/etc/sddm.conf.d"
-      #     sudo tee "$ROOTFS_MOUNT/etc/sddm.conf.d/autologin.conf" << EOF
-      #     [Autologin]
-      #     User=${{ inputs.username }}
-      #     Session=$SDDM_SESSION
-      #     EOF
-      #     sudo chroot "$ROOTFS_MOUNT" systemctl enable sddm
-      #     sudo chroot "$ROOTFS_MOUNT" systemctl set-default graphical.target
-      #     echo "✓ SDDM autologin configured for ${{ inputs.username }}"
-      #
-      # - name: "Enable NetworkManager"
-      #   run: |
-      #     sudo chroot "$ROOTFS_MOUNT" systemctl enable NetworkManager
-      #     echo "✓ NetworkManager enabled"
-      #
-      # # ----------------------------------------------------------------
-      # # Finalize & Unmount
-      # # ----------------------------------------------------------------
-      #
-      # - name: "Configure fstab"
-      #   run: |
-      #     PARTITION="${{ steps.partition.outputs.label }}"
-      #     echo "PARTLABEL=$PARTITION / ext4 defaults 0 1" | \
-      #       sudo tee "$ROOTFS_MOUNT/etc/fstab"
-      #     echo "✓ fstab configured: root=PARTLABEL=$PARTITION"
-      #
-      # - name: "Clean APT Cache"
-      #   run: |
-      #     sudo chroot "$ROOTFS_MOUNT" apt-get clean
-      #     sudo rm -f "$ROOTFS_MOUNT/etc/resolv.conf"
-      #     echo "✓ APT cache cleaned"
-      #
-      # - name: "Unmount Virtual File Systems"
-      #   if: always()
-      #   run: |
-      #     sudo umount "$ROOTFS_MOUNT/dev/pts" 2>/dev/null || true
-      #     sudo umount "$ROOTFS_MOUNT/dev" 2>/dev/null || true
-      #     sudo umount "$ROOTFS_MOUNT/proc" 2>/dev/null || true
-      #     sudo umount "$ROOTFS_MOUNT/sys" 2>/dev/null || true
-      #     echo "✓ Virtual file systems unmounted"
-      #
-      # - name: "Unmount Image & Set UUID"
-      #   run: |
-      #     sudo umount "$ROOTFS_MOUNT" 2>/dev/null || true
-      #     tune2fs -U ee8d3593-59b1-480e-a3b6-4fefb17ee7d8 rootfs.img || true
-      #     echo "✓ Image unmounted, UUID set"
+      - name: "Create RootFS Image"
+        run: |
+          truncate -s "$IMAGE_SIZE" rootfs.img
+          mkfs.ext4 rootfs.img
+          echo "✓ RootFS image created (${IMAGE_SIZE})"
+
+      - name: "Mount RootFS Image"
+        run: |
+          sudo mkdir -p "$ROOTFS_MOUNT"
+          sudo mount -o loop rootfs.img "$ROOTFS_MOUNT"
+          echo "✓ RootFS image mounted at $ROOTFS_MOUNT"
+
+      # ----------------------------------------------------------------
+      # Debootstrap
+      # ----------------------------------------------------------------
+
+      - name: "Run Debootstrap (${{ inputs.distro_suite }})"
+        run: |
+          sudo debootstrap \
+            --arch=arm64 \
+            --components=main,contrib,non-free-firmware \
+            "${{ inputs.distro_suite }}" \
+            "$ROOTFS_MOUNT" \
+            http://deb.debian.org/debian/
+          echo "✓ Debootstrap complete"
+
+      - name: "Mount Virtual File Systems"
+        run: |
+          sudo mount --bind /dev "$ROOTFS_MOUNT/dev"
+          sudo mount --bind /dev/pts "$ROOTFS_MOUNT/dev/pts"
+          sudo mount -t proc proc "$ROOTFS_MOUNT/proc"
+          sudo mount -t sysfs sys "$ROOTFS_MOUNT/sys"
+          sudo cp /etc/resolv.conf "$ROOTFS_MOUNT/etc/resolv.conf"
+          echo "✓ Virtual file systems mounted"
+
+      # ----------------------------------------------------------------
+      # Install Packages
+      # ----------------------------------------------------------------
+
+      - name: "Install Base Packages"
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" apt-get update
+          sudo chroot "$ROOTFS_MOUNT" apt-get install -y \
+            systemd systemd-sysv \
+            sudo vim wget curl \
+            network-manager openssh-server \
+            wpasupplicant dbus \
+            ca-certificates \
+            chrony \
+            iw \
+            lm-sensors \
+            wireless-regdb \
+            net-tools \
+            libglib2.0-0 \
+            libprotobuf-c1 \
+            libqmi-glib5 \
+            libmbim-glib4 \
+            libyaml-0-2 \
+            libgudev-1.0-0 \
+            libpolkit-gobject-1-0
+          echo "✓ Base packages installed"
+
+      - name: "Use Upstream Regulatory Database"
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" update-alternatives --set regulatory.db /lib/firmware/regulatory.db-upstream
+          echo "✓ Upstream regulatory database selected"
+
+      - name: "Install Plymouth"
+        if: ${{ steps.partition.outputs.quiet_boot_enabled == 'true' }}
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" apt-get update
+          sudo chroot "$ROOTFS_MOUNT" apt-get install -y \
+            plymouth plymouth-themes
+          echo "✓ Plymouth installed"
+
+      - name: "Install All .deb Packages"
+        run: |
+          sudo cp ./*.deb "$ROOTFS_MOUNT/tmp/"
+
+          echo "  Packages to install:"
+          sudo ls -lah "$ROOTFS_MOUNT/tmp/"*.deb
+
+          sudo chroot "$ROOTFS_MOUNT" bash -c "
+            apt-get update
+            apt-get install -y /tmp/*.deb 2>&1 || apt-get install -f -y
+            rm /tmp/*.deb
+          "
+          echo "✓ All .deb packages installed"
+
+      # ----------------------------------------------------------------
+      # System Tuning
+      # ----------------------------------------------------------------
+
+      - name: "Fix Permissions"
+        run: |
+          if [ -f "$ROOTFS_MOUNT/usr/bin/adsprpcd" ]; then
+            sudo chmod +x "$ROOTFS_MOUNT/usr/bin/adsprpcd"
+            echo "✓ adsprpcd permissions fixed"
+          else
+            echo "  /usr/bin/adsprpcd not found, skipped"
+          fi
+
+          if [ -f "$ROOTFS_MOUNT/usr/libexec/iio-sensor-proxy" ]; then
+            sudo chmod +x "$ROOTFS_MOUNT/usr/libexec/iio-sensor-proxy"
+            echo "✓ iio-sensor-proxy permissions fixed"
+          else
+            echo "  /usr/libexec/iio-sensor-proxy not found, skipped"
+          fi
+
+          if [ -f "$ROOTFS_MOUNT/usr/bin/monitor-sensor" ]; then
+            sudo chmod +x "$ROOTFS_MOUNT/usr/bin/monitor-sensor"
+            echo "✓ monitor-sensor permissions fixed"
+          else
+            echo "  /usr/bin/monitor-sensor not found, skipped"
+          fi
+
+          if [ -f "$ROOTFS_MOUNT/usr/bin/ssccli" ]; then
+            sudo chmod +x "$ROOTFS_MOUNT/usr/bin/ssccli"
+            echo "✓ ssccli permissions fixed"
+          else
+            echo "  /usr/bin/ssccli not found, skipped"
+          fi
+
+      - name: "Enable Sensor Services"
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" systemctl enable adsprpcd-sensorspd.service
+          echo "✓ Sensor services enabled"
+
+      - name: "Add resizefs Service (First-Boot Auto-Expand)"
+        run: |
+          sudo tee "$ROOTFS_MOUNT/etc/systemd/system/resizefs.service" << 'EOF'
+          [Unit]
+          Description=Expand root filesystem to fill partition and self-destruct
+          After=local-fs.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/bin/bash -c 'exec /usr/sbin/resize2fs $(findmnt -nvo SOURCE /)'
+          ExecStartPost=/usr/bin/systemctl disable resizefs.service
+          ExecStartPost=/usr/bin/rm -f /etc/systemd/system/resizefs.service
+          ExecStartPost=/usr/bin/systemctl daemon-reload
+          RemainAfterExit=true
+
+          [Install]
+          WantedBy=default.target
+          EOF
+          sudo chroot "$ROOTFS_MOUNT" systemctl enable resizefs.service
+          echo "✓ resizefs service added and enabled"
+
+      - name: "Set Hostname"
+        run: |
+          echo "${{ inputs.hostname }}" | sudo tee "$ROOTFS_MOUNT/etc/hostname"
+          if ! grep -q "127.0.1.1.*${{ inputs.hostname }}" "$ROOTFS_MOUNT/etc/hosts"; then
+            echo "127.0.1.1 ${{ inputs.hostname }}" | sudo tee -a "$ROOTFS_MOUNT/etc/hosts"
+          fi
+          echo "✓ Hostname set to ${{ inputs.hostname }}"
+
+      - name: "Configure Locale"
+        run: |
+          LANG_CHOICE="${{ inputs.language }}"
+
+          if [ "$LANG_CHOICE" = 'None (C.UTF-8)' ]; then
+            echo "✓ System locale stays C.UTF-8"
+          else
+            # locales package provides locale-gen and /etc/locale.gen
+            sudo chroot "$ROOTFS_MOUNT" apt-get update
+            sudo chroot "$ROOTFS_MOUNT" apt-get install -y locales
+            # Generate selected language + en_US.UTF-8
+            sudo sed -i 's/^# *\(en_US\.UTF-8\)/\1/' "$ROOTFS_MOUNT/etc/locale.gen"
+            sudo sed -i "s/^# *\\(${LANG_CHOICE//./\\.}\\)/\\1/" "$ROOTFS_MOUNT/etc/locale.gen"
+            sudo chroot "$ROOTFS_MOUNT" locale-gen
+            echo "LANG=$LANG_CHOICE" | sudo tee "$ROOTFS_MOUNT/etc/default/locale"
+            echo "✓ Locale set to $LANG_CHOICE (+ en_US.UTF-8)"
+          fi
+
+      - name: "Create User"
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" useradd \
+            -m -s /bin/bash \
+            -G sudo \
+            "${{ inputs.username }}"
+          echo "✓ User ${{ inputs.username }} created"
+
+      - name: "Set Passwords"
+        env:
+          ROOTFS_PASSWORD: ${{ secrets.ROOTFS_PASSWORD }}
+        run: |
+          if [[ -z "$ROOTFS_PASSWORD" ]]; then
+            ROOTFS_PASSWORD="password"
+          else
+            echo "::add-mask::$ROOTFS_PASSWORD"
+          fi
+          printf '%s:%s\n' "${{ inputs.username }}" "$ROOTFS_PASSWORD" | \
+            sudo chroot "$ROOTFS_MOUNT" chpasswd
+          printf 'root:%s\n' "$ROOTFS_PASSWORD" | \
+            sudo chroot "$ROOTFS_MOUNT" chpasswd
+          echo "✓ Passwords set"
+
+      # ----------------------------------------------------------------
+      # Desktop Environment
+      # ----------------------------------------------------------------
+
+      - name: "Install GNOME"
+        if: ${{ inputs.desktop == 'GNOME' }}
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" apt-get update
+          sudo chroot "$ROOTFS_MOUNT" apt-get install -y \
+            gnome-shell gnome-session gnome-terminal \
+            gdm3 firefox-esr \
+            gnome-control-center
+          echo "✓ GNOME installed"
+
+      - name: "Install KDE Plasma"
+        if: ${{ inputs.desktop == 'KDE Plasma' }}
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" apt-get update
+          if [[ "${{ inputs.plasma_mobile }}" == "true" ]]; then
+            PLASMA_PACKAGE="plasma-mobile"
+          else
+            PLASMA_PACKAGE="plasma-desktop"
+          fi
+          sudo chroot "$ROOTFS_MOUNT" apt-get install -y \
+            "$PLASMA_PACKAGE" plasma-workspace plasma-nm \
+            sddm konsole firefox-esr \
+            dolphin kate \
+            pipewire-alsa
+          echo "✓ KDE Plasma installed"
+
+      - name: "Install KDE Plasma Plymouth Settings"
+        if: ${{ inputs.desktop == 'KDE Plasma' && steps.partition.outputs.quiet_boot_enabled == 'true' }}
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" apt-get update
+          sudo chroot "$ROOTFS_MOUNT" apt-get install -y \
+            kde-config-plymouth plymouth-theme-breeze
+          echo "✓ KDE Plasma Plymouth settings installed"
+
+      - name: "Configure GDM"
+        if: ${{ inputs.desktop == 'GNOME' && (!inputs.autologin) }}
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" systemctl enable gdm3
+          sudo chroot "$ROOTFS_MOUNT" systemctl set-default graphical.target
+          echo "✓ GDM enabled (manual login)"
+
+      - name: "Configure SDDM"
+        if: ${{ inputs.desktop == 'KDE Plasma' && (!inputs.autologin) }}
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" systemctl enable sddm
+          sudo chroot "$ROOTFS_MOUNT" systemctl set-default graphical.target
+          echo "✓ SDDM enabled (manual login)"
+
+      - name: "Configure GDM with Autologin"
+        if: ${{ inputs.desktop == 'GNOME' && inputs.autologin }}
+        run: |
+          sudo mkdir -p "$ROOTFS_MOUNT/etc/gdm3"
+          sudo tee "$ROOTFS_MOUNT/etc/gdm3/daemon.conf" << EOF
+          [daemon]
+          AutomaticLoginEnable=true
+          AutomaticLogin=${{ inputs.username }}
+          EOF
+          sudo chroot "$ROOTFS_MOUNT" systemctl enable gdm3
+          sudo chroot "$ROOTFS_MOUNT" systemctl set-default graphical.target
+          echo "✓ GDM autologin configured for ${{ inputs.username }}"
+
+      - name: "Configure SDDM with Autologin"
+        if: ${{ inputs.desktop == 'KDE Plasma' && inputs.autologin }}
+        run: |
+          if [[ "${{ inputs.plasma_mobile }}" == "true" ]]; then
+            SDDM_SESSION="plasma-mobile"
+          else
+            SDDM_SESSION="plasma"
+          fi
+          sudo mkdir -p "$ROOTFS_MOUNT/etc/sddm.conf.d"
+          sudo tee "$ROOTFS_MOUNT/etc/sddm.conf.d/autologin.conf" << EOF
+          [Autologin]
+          User=${{ inputs.username }}
+          Session=$SDDM_SESSION
+          EOF
+          sudo chroot "$ROOTFS_MOUNT" systemctl enable sddm
+          sudo chroot "$ROOTFS_MOUNT" systemctl set-default graphical.target
+          echo "✓ SDDM autologin configured for ${{ inputs.username }}"
+
+      - name: "Enable NetworkManager"
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" systemctl enable NetworkManager
+          echo "✓ NetworkManager enabled"
+
+      # ----------------------------------------------------------------
+      # Finalize & Unmount
+      # ----------------------------------------------------------------
+
+      - name: "Configure fstab"
+        run: |
+          PARTITION="${{ steps.partition.outputs.label }}"
+          echo "PARTLABEL=$PARTITION / ext4 defaults 0 1" | \
+            sudo tee "$ROOTFS_MOUNT/etc/fstab"
+          echo "✓ fstab configured: root=PARTLABEL=$PARTITION"
+
+      - name: "Clean APT Cache"
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" apt-get clean
+          sudo rm -f "$ROOTFS_MOUNT/etc/resolv.conf"
+          echo "✓ APT cache cleaned"
+
+      - name: "Unmount Virtual File Systems"
+        if: always()
+        run: |
+          sudo umount "$ROOTFS_MOUNT/dev/pts" 2>/dev/null || true
+          sudo umount "$ROOTFS_MOUNT/dev" 2>/dev/null || true
+          sudo umount "$ROOTFS_MOUNT/proc" 2>/dev/null || true
+          sudo umount "$ROOTFS_MOUNT/sys" 2>/dev/null || true
+          echo "✓ Virtual file systems unmounted"
+
+      - name: "Unmount Image & Set UUID"
+        run: |
+          sudo umount "$ROOTFS_MOUNT" 2>/dev/null || true
+          tune2fs -U ee8d3593-59b1-480e-a3b6-4fefb17ee7d8 rootfs.img || true
+          echo "✓ Image unmounted, UUID set"
 
       # ----------------------------------------------------------------
       # Boot Image (custom kernel only)
@@ -1284,19 +1278,18 @@ jobs:
             -o boot.img
           echo "✓ boot.img generated (cmdline: $CMDLINE)"
 
-      # ================================================================
-      # UPLOAD FINAL ARTIFACTS — RootFS generation disabled
-      # ================================================================
+      # ----------------------------------------------------------------
+      # Upload Final Artifacts
+      # ----------------------------------------------------------------
 
-      # # Disabled: RootFS image upload
-      # - name: "Upload RootFS Image"
-      #   uses: actions/upload-artifact@v7
-      #   with:
-      #     name: rootfs-${{ inputs.distro_suite }}-${{ inputs.desktop }}-${{ steps.partition.outputs.label }}
-      #     path: rootfs.img
-      #     retention-days: 14
-      #     if-no-files-found: error
-      #     compression-level: 1
+      - name: "Upload RootFS Image"
+        uses: actions/upload-artifact@v7
+        with:
+          name: rootfs-${{ inputs.distro_suite }}-${{ inputs.desktop }}-${{ steps.partition.outputs.label }}
+          path: rootfs.img
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 1
 
       - name: "Upload Boot Image"
         uses: actions/upload-artifact@v7
