@@ -131,7 +131,7 @@ on:
 
 jobs:
   # ==========================================================================
-  # Kernel (conditional on custom_build)
+  # Boot Image Only Workflow — Skips RootFS, builds boot.img with custom kernel
   # ==========================================================================
   build-kernel:
     name: "Build Kernel"
@@ -179,6 +179,17 @@ jobs:
             linux
           echo "✓ Kernel repo cloned"
 
+      - name: "Verify Config — CONFIG_STRICT_DEVMEM disabled"
+        if: ${{ inputs.kernel_source == 'custom_build' }}
+        run: |
+          echo "=== Verifying kernel config ==="
+          grep "STRICT_DEVMEM" "${{ github.workspace }}/${{ inputs.kernel_config }}"
+          if grep -q "CONFIG_STRICT_DEVMEM=y" "${{ github.workspace }}/${{ inputs.kernel_config }}"; then
+            echo "ERROR: CONFIG_STRICT_DEVMEM=y found! Must be disabled."
+            exit 1
+          fi
+          echo "✓ CONFIG_STRICT_DEVMEM is correctly disabled"
+
       - name: "Build Kernel"
         id: build
         if: ${{ inputs.kernel_source == 'custom_build' }}
@@ -224,6 +235,14 @@ jobs:
 
           cd "${{ github.workspace }}"
           ccache --show-stats --verbose | grep -E "(hit rate|cache hit|cache miss|max size)" || true
+
+          # Verify CONFIG_STRICT_DEVMEM is disabled in built kernel
+          echo "=== Verifying built kernel config ==="
+          if grep -q "CONFIG_STRICT_DEVMEM=y" linux/.config; then
+            echo "ERROR: Kernel config still has CONFIG_STRICT_DEVMEM=y"
+            exit 1
+          fi
+          echo "✓ CONFIG_STRICT_DEVMEM confirmed disabled in kernel"
           echo "✓ Kernel build complete"
 
       - name: "Package Kernel"
